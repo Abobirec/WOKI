@@ -1,0 +1,93 @@
+{
+  "name": "woki",
+  "displayName": "WOKI — AI агент-кодер",
+  "description": "Дай задачу — агент сам думает, читает и пишет код прямо в твоём проекте. Как Cursor, но через NVIDIA / GitHub Models.",
+  "version": "0.1.0",
+  "publisher": "woki",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Programming Languages",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "woki-container",
+          "title": "WOKI",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "woki-container": [
+        {
+          "id": "woki.chat",
+          "name": "Агент",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "woki.openChat",
+        "title": "WOKI: Открыть агента"
+      },
+      {
+        "command": "woki.setApiKey",
+        "title": "WOKI: Задать API ключ"
+      }
+    ],
+    "configuration": {
+      "title": "WOKI",
+      "properties": {
+        "woki.provider": {
+          "type": "string",
+          "enum": ["nvidia", "github"],
+          "default": "nvidia",
+          "enumDescriptions": [
+            "NVIDIA build.nvidia.com (integrate.api.nvidia.com)",
+            "GitHub Models (models.github.ai)"
+          ],
+          "description": "Через какой сервис общаться с нейросетью."
+        },
+        "woki.nvidia.model": {
+          "type": "string",
+          "default": "deepseek-ai/deepseek-v3",
+          "description": "Модель для NVIDIA (напр. deepseek-ai/deepseek-v3, meta/llama-3.3-70b-instruct, qwen/qwen2.5-coder-32b-instruct)."
+        },
+        "woki.github.model": {
+          "type": "string",
+          "default": "openai/gpt-4o",
+          "description": "Модель для GitHub Models (напр. openai/gpt-4o, openai/o1-mini, meta/Llama-3.3-70B-Instruct)."
+        },
+        "woki.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Креативность модели. Для кода держи низкой (0.0–0.3)."
+        },
+        "woki.maxSteps": {
+          "type": "number",
+          "default": 25,
+          "description": "Максимум шагов агента на одну задачу (защита от бесконечного цикла)."
+        },
+        "woki.autoApproveEdits": {
+          "type": "boolean",
+          "default": false,
+          "description": "Применять правки файлов без подтверждения. Включай осторожно."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "echo \"no lint configured\""
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0"
+  }
+}

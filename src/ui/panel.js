@@ -27,7 +27,41 @@ class ChatViewProvider {
       } else if (m.type === "reset") {
         this.agent = null;
         this.post({ type: "log", text: "🔄 Контекст сброшен." });
+      } else if (m.type === "requestState") {
+        await this.sendState();
+      } else if (m.type === "saveKey") {
+        await this.context.secrets.store(`woki.apiKey.${m.provider}`, (m.key || "").trim());
+        this.post({ type: "log", text: `🔑 Ключ для «${m.provider}» сохранён.` });
+        await this.sendState();
+      } else if (m.type === "saveConfig") {
+        const c = vscode.workspace.getConfiguration("woki");
+        await c.update("provider", m.provider, vscode.ConfigurationTarget.Global);
+        const modelKey = m.provider === "nvidia" ? "nvidia.model" : "github.model";
+        await c.update(modelKey, m.model, vscode.ConfigurationTarget.Global);
+        if (typeof m.temperature === "number") {
+          await c.update("temperature", m.temperature, vscode.ConfigurationTarget.Global);
+        }
+        this.agent = null; // пересоздать с новыми настройками
+        this.post({ type: "log", text: `⚙️ Провайдер: ${m.provider}, модель: ${m.model}.` });
+        await this.sendState();
       }
+    });
+
+    this.sendState();
+  }
+
+  /** Отправляет в webview текущие настройки и факт наличия ключей (сами ключи не светим). */
+  async sendState() {
+    const c = vscode.workspace.getConfiguration("woki");
+    const provider = c.get("provider");
+    const nvKey = await this.context.secrets.get("woki.apiKey.nvidia");
+    const ghKey = await this.context.secrets.get("woki.apiKey.github");
+    this.post({
+      type: "state",
+      provider,
+      models: { nvidia: c.get("nvidia.model"), github: c.get("github.model") },
+      temperature: c.get("temperature"),
+      hasKey: { nvidia: !!nvKey, github: !!ghKey },
     });
   }
 
@@ -131,6 +165,50 @@ class ChatViewProvider {
 <link href="${styleUri}" rel="stylesheet">
 </head>
 <body>
+  <div id="topbar">
+    <span id="status">WOKI</span>
+    <button id="gear" class="ghost" title="Настройки">⚙</button>
+  </div>
+
+  <div id="settings" class="hidden">
+    <div class="field">
+      <label>Провайдер</label>
+      <select id="provider">
+        <option value="nvidia">NVIDIA (build.nvidia.com)</option>
+        <option value="github">GitHub Models</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Ключ NVIDIA <span id="nv-saved" class="badge"></span></label>
+      <div class="row">
+        <input id="nv-key" type="password" placeholder="nvapi-…">
+        <button id="nv-save" class="ghost">Сохранить</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>GitHub токен <span id="gh-saved" class="badge"></span></label>
+      <div class="row">
+        <input id="gh-key" type="password" placeholder="ghp_…">
+        <button id="gh-save" class="ghost">Сохранить</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Модель</label>
+      <select id="model"></select>
+      <input id="model-custom" placeholder="или впиши свою модель" />
+    </div>
+
+    <div class="field">
+      <label>Temperature: <span id="temp-val">0.2</span></label>
+      <input id="temp" type="range" min="0" max="1" step="0.05" value="0.2">
+    </div>
+
+    <button id="apply">Сохранить настройки</button>
+  </div>
+
   <div id="log"></div>
   <div id="bar">
     <textarea id="input" rows="2" placeholder="Опиши задачу… (Enter — отправить)"></textarea>

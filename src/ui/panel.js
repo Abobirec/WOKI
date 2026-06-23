@@ -44,13 +44,66 @@ class ChatViewProvider {
         this.agent = null; // пересоздать с новыми настройками
         this.post({ type: "log", text: `⚙️ Провайдер: ${m.provider}, модель: ${m.model}.` });
         await this.sendState();
+      } else if (m.type === "stop") {
+        this.agent && this.agent.cancel();
+      } else if (m.type === "saveProjectSecret") {
+        if (m.name) {
+          await this.context.secrets.store(this.secretKey(m.name), m.value || "");
+          await this.addSecretName(m.name);
+          this.post({ type: "log", text: `🔐 Секрет проекта «${m.name}» сохранён.` });
+          await this.sendState();
+        }
+      } else if (m.type === "deleteProjectSecret") {
+        await this.context.secrets.delete(this.secretKey(m.name));
+        await this.removeSecretName(m.name);
+        this.post({ type: "log", text: `🗑 Секрет «${m.name}» удалён.` });
+        await this.sendState();
       }
     });
 
     this.sendState();
   }
 
-  /** Отправляет в webview текущие настройки и факт наличия ключей (сами ключи не светим). */
+  /** Идентификатор текущего проекта для пер-проектного хранения. */
+  projectId() {
+    const f = vscode.workspace.workspaceFolders;
+    return f && f.length ? f[0].uri.toString() : "global";
+  }
+
+  // --- Секреты проекта (именованные ключи, шифрованы в SecretStorage) ---
+  secretKey(name) {
+    return `woki.secret::${this.projectId()}::${name}`;
+  }
+  secretNamesKey() {
+    return `woki.secretNames::${this.projectId()}`;
+  }
+  getSecretNames() {
+    return this.context.workspaceState.get(this.secretNamesKey(), []);
+  }
+  async addSecretName(name) {
+    const names = new Set(this.getSecretNames());
+    names.add(name);
+    await this.context.workspaceState.update(this.secretNamesKey(), [...names]);
+  }
+  async removeSecretName(name) {
+    const names = this.getSecretNames().filter((n) => n !== name);
+    await this.context.workspaceState.update(this.secretNamesKey(), names);
+  }
+
+  // --- История диалога проекта (память между перезапусками) ---
+  historyKey() {
+    return `woki.history::${this.projectId()}`;
+  }
+  loadHistory() {
+    return this.context.workspaceState.get(this.historyKey(), []);
+  }
+  async saveHistory(messages) {
+    // Храним последние ~40 сообщений, чтобы не раздувать состояние.
+    const trimmed = messages.slice(-40);
+    await this.context.workspaceState.update(this.historyKey(), trimmed);
+  }
+
+  /** Отправляет в webview текущие настройки, наличие ключей и имена секретов проекта. */
   async sendState() {
     const c = vscode.workspace.getConfiguration("woki");
     const provider = c.get("provider");
@@ -62,6 +115,7 @@ class ChatViewProvider {
       models: { nvidia: c.get("nvidia.model"), github: c.get("github.model") },
       temperature: c.get("temperature"),
       hasKey: { nvidia: !!nvKey, github: !!ghKey },
+      projectSecrets: this.getSecretNames(),
     });
   }
 
@@ -79,6 +133,22 @@ class ChatViewProvider {
     this.agent = new Agent({
       os: `${os.type()} ${os.release()}`,
       workspace,
+      history: this.loadHistory(),
+      loadMemory: async () => {
+        const f = vscode.workspace.workspaceFolders;
+        if (!f || !f.length) return null;
+        const uri = vscode.Uri.joinPath(f[0].uri, ".woki", "memory.md");
+        try {
+          const bytes = await vscode.workspace.fs.readFile(uri);
+          return Buffer.from(bytes).toString("utf8");
+        } catch {
+          return null;
+        }
+      },
+      secrets: {
+        list: async () => this.getSecretNames(),
+        get: async (name) => this.context.secrets.get(this.secretKey(name)),
+      },
       getConfig: () => {
         const c = vscode.workspace.getConfiguration("woki");
         const provider = c.get("provider");
@@ -101,6 +171,9 @@ class ChatViewProvider {
       ui: {
         log: (t) => this.post({ type: "log", text: t }),
         assistant: (t) => this.post({ type: "assistant", text: t }),
+        beginAssistant: () => this.post({ type: "assistantBegin" }),
+        assistantDelta: (t) => this.post({ type: "assistantDelta", text: t }),
+        endAssistant: () => this.post({ type: "assistantEnd" }),
         confirmEdit: async (path, oldText, newText) => {
           const cfg = vscode.workspace.getConfiguration("woki");
           if (cfg.get("autoApproveEdits")) return true;
@@ -142,6 +215,7 @@ class ChatViewProvider {
     try {
       const agent = this.ensureAgent();
       await agent.run(text);
+      await this.saveHistory(agent.exportHistory());
     } catch (e) {
       this.post({ type: "log", text: `❌ ${e.message}` });
     } finally {
@@ -207,6 +281,18 @@ class ChatViewProvider {
     </div>
 
     <button id="apply">Сохранить настройки</button>
+
+    <hr>
+    <div class="field">
+      <label>🔐 API-ключи этого проекта</label>
+      <div class="hint">Шифруются отдельно для каждого проекта. Агент впишет их в .env, не зная значения.</div>
+      <ul id="secret-list"></ul>
+      <div class="row">
+        <input id="sec-name" placeholder="имя, напр. OPENAI_API_KEY">
+        <input id="sec-val" type="password" placeholder="значение">
+        <button id="sec-add" class="ghost">+</button>
+      </div>
+    </div>
   </div>
 
   <div id="log"></div>
@@ -214,6 +300,7 @@ class ChatViewProvider {
     <textarea id="input" rows="2" placeholder="Опиши задачу… (Enter — отправить)"></textarea>
     <div class="row">
       <button id="send">Отправить</button>
+      <button id="stop" class="ghost hidden">⏹ Стоп</button>
       <button id="reset" class="ghost">Сброс</button>
     </div>
   </div>

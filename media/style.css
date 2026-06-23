@@ -20,6 +20,13 @@ select, input[type="password"], input[type="text"], #model-custom {
   font-family: inherit; font-size: inherit; width: 100%; box-sizing: border-box;
 }
 #settings .row input { flex: 1; }
+#settings hr { border: none; border-top: 1px solid var(--vscode-panel-border, #444); margin: 12px 0; }
+.hint { font-size: 0.72em; opacity: 0.6; }
+#secret-list { list-style: none; padding: 0; margin: 4px 0; }
+#secret-list li { display: flex; align-items: center; justify-content: space-between; font-family: monospace; font-size: 0.85em; padding: 2px 0; }
+button.tiny { padding: 0 6px; font-size: 0.8em; }
+.hidden { display: none !important; }
+.msg .body { white-space: pre-wrap; word-wrap: break-word; }
 #log { flex: 1; overflow-y: auto; padding: 10px; }
 .msg { margin: 8px 0; padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.4; }
 .msg.user { background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }

@@ -85,6 +85,54 @@ const toolSchemas = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "read_active_editor",
+      description: "Получить путь и содержимое файла, открытого сейчас в редакторе, и выделенный фрагмент (если есть).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remember",
+      description:
+        "Сохранить важную заметку в долговременную память проекта (.woki/memory.md), чтобы помнить её в будущих сессиях.",
+      parameters: {
+        type: "object",
+        properties: {
+          note: { type: "string", description: "Короткий факт о проекте, который стоит запомнить." },
+        },
+        required: ["note"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_secrets",
+      description: "Показать ИМЕНА сохранённых API-ключей проекта (без значений).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_secret_to_env",
+      description:
+        "Безопасно записать значение сохранённого секрета в файл вида KEY=value (например .env). Значение НЕ проходит через модель.",
+      parameters: {
+        type: "object",
+        properties: {
+          secret: { type: "string", description: "Имя секрета из list_secrets." },
+          file: { type: "string", description: "Файл назначения, напр. .env" },
+          var: { type: "string", description: "Имя переменной окружения, напр. OPENAI_API_KEY" },
+        },
+        required: ["secret", "file", "var"],
+      },
+    },
+  },
 ];
 
 function workspaceRoot() {
@@ -102,7 +150,7 @@ function resolve(rel) {
  * Исполнители инструментов. Каждый возвращает строку — результат для модели.
  * onEdit(path, oldText, newText) вызывается перед записью для подтверждения/диффа.
  */
-function makeExecutors({ confirmEdit, confirmCommand, log }) {
+function makeExecutors({ confirmEdit, confirmCommand, log, secrets }) {
   async function readFileSafe(uri) {
     try {
       const bytes = await vscode.workspace.fs.readFile(uri);
@@ -169,6 +217,54 @@ function makeExecutors({ confirmEdit, confirmCommand, log }) {
           else res(out.slice(0, 8000) || "(нет вывода, код 0)");
         });
       });
+    },
+
+    async read_active_editor() {
+      const ed = vscode.window.activeTextEditor;
+      if (!ed) return "Сейчас нет открытого файла в редакторе.";
+      const root = workspaceRoot().fsPath;
+      const full = ed.document.uri.fsPath;
+      const rel = full.startsWith(root) ? full.slice(root.length + 1) : full;
+      const sel = ed.selection && !ed.selection.isEmpty ? ed.document.getText(ed.selection) : "";
+      const text = ed.document.getText();
+      return (
+        `Открытый файл: ${rel}\n` +
+        (sel ? `Выделение:\n${sel}\n---\n` : "") +
+        `Содержимое:\n${text.slice(0, 12000)}`
+      );
+    },
+
+    async remember(args) {
+      const uri = resolve(".woki/memory.md");
+      const prev = (await readFileSafe(uri)) ?? "# Память проекта WOKI\n";
+      const stamp = new Date().toISOString().slice(0, 10);
+      const next = prev.replace(/\s*$/, "") + `\n- (${stamp}) ${args.note}\n`;
+      await vscode.workspace.fs.createDirectory(resolve(".woki")).catch(() => {});
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(next, "utf8"));
+      log(`🧠 Запомнил: ${args.note}`);
+      return "Сохранено в память проекта.";
+    },
+
+    async list_secrets() {
+      if (!secrets) return "Хранилище секретов недоступно.";
+      const names = await secrets.list();
+      return names.length ? "Доступные секреты: " + names.join(", ") : "Секретов пока нет.";
+    },
+
+    async save_secret_to_env(args) {
+      if (!secrets) return "Хранилище секретов недоступно.";
+      const value = await secrets.get(args.secret);
+      if (value === undefined) return `Секрет «${args.secret}» не найден. Проверь list_secrets.`;
+      const uri = resolve(args.file);
+      const prev = (await readFileSafe(uri)) ?? "";
+      const line = `${args.var}=${value}`;
+      const re = new RegExp(`^${args.var}=.*$`, "m");
+      const next = re.test(prev) ? prev.replace(re, line) : prev.replace(/\s*$/, "") + `\n${line}\n`;
+      const ok = await confirmEdit(args.file, prev, next.replace(value, "***"));
+      if (!ok) return "Пользователь отклонил запись секрета.";
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(next, "utf8"));
+      log(`🔐 Секрет «${args.secret}» записан в ${args.file} как ${args.var}`);
+      return `Готово: ${args.var} записан в ${args.file} (значение не раскрыто).`;
     },
   };
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <Extern href="stdidcmd.h" />
+  <Extern href="vsshlids.h" />
+
+  <Commands package="guidWokiPackage">
+    <Groups>
+      <Group guid="guidWokiCmdSet" id="WokiMenuGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
+      </Group>
+    </Groups>
+
+    <Buttons>
+      <Button guid="guidWokiCmdSet" id="OpenWokiCommand" priority="0x0100" type="Button">
+        <Parent guid="guidWokiCmdSet" id="WokiMenuGroup" />
+        <Strings>
+          <ButtonText>WOKI — AI агент</ButtonText>
+        </Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="guidWokiPackage" value="{f3b9a1c2-1d4e-4a8b-9c2f-7e6d5a4b3c21}" />
+    <GuidSymbol name="guidWokiCmdSet" value="{a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6}">
+      <IDSymbol name="WokiMenuGroup" value="0x1020" />
+      <IDSymbol name="OpenWokiCommand" value="0x0100" />
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>
